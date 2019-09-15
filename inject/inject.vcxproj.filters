@@ -1,0 +1,55 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Detours">
+      <UniqueIdentifier>{d59a7a8c-e39b-4bab-85dc-7062f9dee9cc}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="inject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\creatwth.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\detours.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\disasm.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\disolarm.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\disolarm64.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\disolia64.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\disolx64.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\disolx86.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\image.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\modules.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+    <ClCompile Include="Detours\uimports.cpp">
+      <Filter>Detours</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Detours\detours.h">
+      <Filter>Detours</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
