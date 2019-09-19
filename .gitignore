@@ -15,5 +15,5 @@
 ipch/
 [Dd]ebug/
 [Rr]elease/
-/DirtFixSetup_*.exe
+/DirtFix-*.exe
 /make_release.bat

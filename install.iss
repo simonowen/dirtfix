@@ -1,10 +1,15 @@
 ; Inno Setup script for DirtFix installer
 
 #define MyAppName "DirtFix"
-#define MyAppVersion "1.0"
+#define MyAppExeName MyAppName + ".exe"
+#define VerMajor
+#define VerMinor
+#define VerRev
+#define VerBuild
+#define FullVersion=ParseVersion("Release\" + MyAppExeName, VerMajor, VerMinor, VerRev, VerBuild)
+#define MyAppVersion Str(VerMajor) + "." + Str(VerMinor)
 #define MyAppPublisher "Simon Owen"
 #define MyAppURL "https://github.com/simonowen/dirtfix"
-#define MyAppExeName "DirtFix.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -21,9 +26,8 @@ DefaultDirName={pf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 UninstallDisplayName={#MyAppName}
 DisableProgramGroupPage=auto
-InfoBeforeFile=License.txt
 OutputDir=.
-OutputBaseFilename=DirtFixSetup_{#StringChange(MyAppVersion, '.', '')}
+OutputBaseFilename={#MyAppName}-{#StringChange(MyAppVersion, '.', '')}
 Compression=lzma
 SolidCompression=yes
 SignTool=signtool $f
@@ -38,7 +42,8 @@ SetupWindowTitle=Setup - {#MyAppName} v{#MyAppVersion}
 
 [Files]
 Source: "Release\DirtFix.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Release\inject.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Release\dinput8_32.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Release\dinput8_64.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ReadMe.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "License.txt"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -47,12 +52,18 @@ Name: "{commonprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{commonprograms}\{#MyAppName} Website"; Filename: "https://github.com/simonowen/dirtfix"
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"" --startup"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "{#MyAppName}"; ValueType: none; Flags: deletevalue
+Root: HKCU; Subkey: "Software\SimonOwen\{#MyAppName}"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\SimonOwen"; Flags: uninsdeletekeyifempty
-Root: HKCU; Subkey: "Software\SimonOwen\DirtFix"; Flags: uninsdeletekey
+
+[InstallDelete]
+Type: files; Name: "{app}\inject.dll"
+
+[Run]
+Filename: "{app}\{#MyAppName}"; Flags: postinstall
 
 [UninstallRun]
-Filename: "taskkill.exe"; Parameters: "/f /im ""{#MyAppExeName}"""; Flags: runhidden
+Filename: "{app}\{#MyAppName}"; Parameters: "/uninstall"
 
 [Code]
 
@@ -78,7 +89,6 @@ begin
   Exec(ExpandConstant('taskkill.exe'), '/f /im ' + '"' + ExeName + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := ''
@@ -87,17 +97,4 @@ begin
   begin
       CloseApplication('{#MyAppExeName}')
   end;
-end;
-
-function NextButtonClick(CurPageID: Integer): Boolean;
-var
-  ResultCode: Integer;
-begin
-  Result := True;
-
-  if (CurPageID = wpFinished) and ((not WizardForm.YesRadio.Visible) or 
-    (not WizardForm.YesRadio.Checked))
-  then
-    ExecAsOriginalUser(ExpandConstant('{app}\{#MyAppExeName}'), '', '', 
-      SW_SHOWNORMAL, ewNoWait, ResultCode);
 end;
