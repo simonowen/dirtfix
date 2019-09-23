@@ -1,6 +1,5 @@
 #include "pch.h"
 
-#pragma comment(lib, "dinput8.lib")
 #pragma comment(lib, "detours.lib")		// from vcpkg
 
 constexpr auto APP_NAME{ "DirtFix" };
@@ -21,11 +20,13 @@ HRESULT __stdcall Hooked_EnumDevices(
 	LPVOID pvRef,
 	DWORD dwFlags)
 {
-	std::lock_guard<std::mutex> lock(g_mutex);
-	if (++g_mEnumCalls[GetCurrentThreadId()] > MAX_ENUM_DEVICES_CALLS)
 	{
-		// Fail the call, causing the game to skip any post-processing.
-		return DIERR_GENERIC;
+		std::lock_guard<std::mutex> lock(g_mutex);
+		if (++g_mEnumCalls[GetCurrentThreadId()] > MAX_ENUM_DEVICES_CALLS)
+		{
+			// Fail the call, causing the game to skip any post-processing.
+			return DIERR_GENERIC;
+		}
 	}
 
 	return g_pfnEnumDevices(pThis, dwDevType, lpCallback, pvRef, dwFlags);
@@ -63,7 +64,8 @@ DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID* ppv
 
 	hr = g_pfnDirectInput8Create(hinst, dwVersion, riidltf, ppvOut, punkOuter);
 
-	if (SUCCEEDED(hr) && (riidltf == IID_IDirectInput8A || (riidltf == IID_IDirectInput8W)))
+	if (SUCCEEDED(hr) && (g_pfnEnumDevices == nullptr) &&
+		(riidltf == IID_IDirectInput8A || (riidltf == IID_IDirectInput8W)))
 	{
 		auto pDI8 = reinterpret_cast<IDirectInput8*>(*ppvOut);
 		g_pfnEnumDevices = pDI8->lpVtbl->EnumDevices;
@@ -82,18 +84,12 @@ BOOL APIENTRY DllMain(
 	_In_ DWORD  dwReason,
 	_In_ LPVOID /*lpvReserved*/)
 {
-	if (DetourIsHelperProcess())
-		return TRUE;
-
-	if (dwReason == DLL_PROCESS_DETACH)
+	if ((dwReason == DLL_PROCESS_DETACH) && (g_pfnEnumDevices != nullptr))
 	{
-		if (g_pfnEnumDevices)
-		{
-			DetourTransactionBegin();
-			DetourUpdateThread(GetCurrentThread());
-			DetourDetach(&reinterpret_cast<PVOID&>(g_pfnEnumDevices), Hooked_EnumDevices);
-			DetourTransactionCommit();
-		}
+		DetourTransactionBegin();
+		DetourUpdateThread(GetCurrentThread());
+		DetourDetach(&reinterpret_cast<PVOID&>(g_pfnEnumDevices), Hooked_EnumDevices);
+		DetourTransactionCommit();
 	}
 
 	return TRUE;
