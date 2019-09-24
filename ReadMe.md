@@ -1,4 +1,4 @@
-# DirtFix (DiRT Input Glitch Fixer) v1.1
+# DirtFix (DiRT Input Glitch Fixer) v1.2
 
 ## Introduction
 
@@ -48,6 +48,10 @@ Source code is available from the [DirtFix project page](https://github.com/simo
 Includes VS2019 solution, but requires detours.lib from vcpkg.
 
 ## Changelog
+
+### v1.2
+- fixed re-entrant hook crash, possibly related to Logitech drivers.
+  Special thanks to GitHub users digitalmonk1973, br3ndanp, and caerphoto.
 
 ### v1.1
 - added support for DiRT Rally 2.0 and DiRT 4.

@@ -28,6 +28,7 @@ UninstallDisplayName={#MyAppName}
 DisableProgramGroupPage=auto
 OutputDir=.
 OutputBaseFilename={#MyAppName}-{#StringChange(MyAppVersion, '.', '')}
+VersionInfoVersion={#FullVersion}
 Compression=lzma
 SolidCompression=yes
 SignTool=signtool $f
