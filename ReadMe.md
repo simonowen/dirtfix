@@ -3,7 +3,7 @@
 ## Introduction
 
 Recent Codemasters "DiRT" series games check for game controller changes every
-2 seconds, which can cause a spike in CPU activity, leading to gameplay glitches.
+2 seconds, which can cause a spike in frame times, leading to gameplay glitches.
 DirtFix suspends this background polling to eliminate the glitches it causes.
 
 Tested with DiRT Rally, DiRT Rally 2.0, and DiRT 4.
@@ -24,12 +24,12 @@ To upgrade an earlier version simply over-install with the latest version.
 
 ## Results
 
-Before installing, the SteamVR profiler shows CPU activity spikes at ~2 second
-intervals that often exceed the 11ms frame time budget for 90fps in VR:
+Before installing, the SteamVR profiler shows CPU frame time spikes at ~2 second
+intervals that often exceed the 11ms budget for 90fps in VR:
 
 ![Performance Before Installing](images/before.png)
 
-After installing, the CPU spikes are absent, for smoother performance:
+After installing, the spikes are eliminated, for smoother gameplay:
 
 ![Performance After Installing](images/after.png)
 
@@ -88,7 +88,7 @@ Includes VS2019 solution, but requires detours.lib from vcpkg.
 
 ### v1.2
 - fixed re-entrant hook crash, possibly related to Logitech drivers.  
-  Special thanks to GitHub users digitalmonk1973, br3ndanp, and caerphoto.
+  Special thanks to GitHub users @digitalmonk1973, @br3ndanp, and @caerphoto.
 
 ### v1.1
 - added support for DiRT Rally 2.0 and DiRT 4.
