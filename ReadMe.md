@@ -1,4 +1,4 @@
-# DirtFix (DiRT Input Glitch Fixer) v1.2
+# DirtFix (DiRT Input Glitch Fixer) v1.3
 
 ## Introduction
 
@@ -42,7 +42,7 @@ VR after pressing Esc to pause the start of a rally. DirtFix was not installed.
 
 The coloured markers show when each of the ~30 threads are actively executing.
 Thread 5532 is the DirectInput polling thread, and the solid blue block shows
-it polling for game controller changes using `IDirectInput8!EnumDevices`. The
+it polling for game controller changes using `IDirectInput8::EnumDevices`. The
 bulk of this time is spent parsing device INF files in `cfgmg32!ParseNewInf`.
 Note that when the input thread is active, most of the other game threads are
 not running!
@@ -75,7 +75,7 @@ DirtFix uses a shim version of a DirectInput module (dinput8.dll), which is
 copied into the game directory. This allows allows it to sit between the game
 and DirectInput API, and change its behaviour.
 
-DirtFix passes through the first 3 calls to `IDirectInput8::EnumDevices` on each
+DirtFix passes through the first 2 calls to `IDirectInput8::EnumDevices` on each
 thread, before failing the call. The failure code causes the game to skip any
 post-processing of the results, so no further controller changes are seen. This
 both saves CPU time and avoids the main thead lock contention, to prevents the
@@ -85,6 +85,9 @@ Source code is available from the [DirtFix project page](https://github.com/simo
 Includes VS2019 solution, but requires detours.lib from vcpkg.
 
 ## Changelog
+
+### v1.3
+- added support for hot-plugging controllers while the game is running.
 
 ### v1.2
 - fixed re-entrant hook crash, possibly related to Logitech drivers.  
