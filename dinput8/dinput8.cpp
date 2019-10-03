@@ -3,13 +3,14 @@
 #pragma comment(lib, "detours.lib")		// from vcpkg
 
 constexpr auto APP_NAME{ "DirtFix" };
-constexpr auto MAX_ENUM_DEVICES_CALLS = 3;
+constexpr auto MAX_ENUM_DEVICES_CALLS = 2;
 
 decltype(&DirectInput8Create) g_pfnDirectInput8Create;
 decltype(IDirectInput8::lpVtbl->EnumDevices) g_pfnEnumDevices;
 
 std::mutex g_mutex;
 std::map<DWORD, int> g_mEnumCalls;
+HWND g_hwndNotify;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -33,6 +34,28 @@ HRESULT __stdcall Hooked_EnumDevices(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+
+LRESULT CALLBACK HidNotifySubclassProc(
+	HWND hWnd,
+	UINT uMsg,
+	WPARAM wParam,
+	LPARAM lParam,
+	UINT_PTR /*uIdSubclass*/,
+	DWORD_PTR /*dwRefData*/)
+{
+	auto p = reinterpret_cast<PDEV_BROADCAST_DEVICEINTERFACE>(lParam);
+
+	if (uMsg == WM_DEVICECHANGE &&
+		(wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE) &&
+		p->dbcc_devicetype == DBT_DEVTYP_DEVICEINTERFACE &&
+		p->dbcc_classguid == GUID_DEVINTERFACE_HID)
+	{
+		std::lock_guard<std::mutex> lock(g_mutex);
+		g_mEnumCalls.clear();
+	}
+
+	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
 
 extern "C"
 HRESULT WINAPI
@@ -74,6 +97,15 @@ DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID* ppv
 		DetourUpdateThread(GetCurrentThread());
 		DetourAttach(&reinterpret_cast<PVOID&>(g_pfnEnumDevices), Hooked_EnumDevices);
 		DetourTransactionCommit();
+
+		g_hwndNotify = CreateWindow("static", "", 0, 0, 0, 0, 0, NULL, NULL, GetModuleHandle(NULL), 0L);
+		SetWindowSubclass(g_hwndNotify, HidNotifySubclassProc, 0, 0);
+
+		DEV_BROADCAST_DEVICEINTERFACE dbdi{};
+		dbdi.dbcc_size = sizeof(dbdi);
+		dbdi.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+		dbdi.dbcc_classguid = GUID_DEVINTERFACE_HID;
+		RegisterDeviceNotification(g_hwndNotify, &dbdi, DEVICE_NOTIFY_WINDOW_HANDLE);
 	}
 
 	return hr;

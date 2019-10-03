@@ -12,6 +12,8 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <commctrl.h>
+#include <dbt.h>
 #include "detours.h"
 
 #include <mutex>
@@ -19,8 +21,8 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
-#define INIT_GUID
 #include <initguid.h>
+DEFINE_GUID(GUID_DEVINTERFACE_HID, 0x4D1E55B2L, 0xF16F, 0x11CF, 0x88, 0xCB, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30);
 
 #define DIRECTINPUT_VERSION		0x0800
 #define CINTERFACE	// for vtable access
