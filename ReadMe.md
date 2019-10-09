@@ -67,7 +67,7 @@ multiple dropped frames.
 
 While DirtFix suspending the input polling does avoid the problem, it would be
 better if polling only occurred when PnP notifications indicated a change. This
-can be done using `RegisterDeviceNotification` or by handling `WM_DEVICECHANGE`.
+can be done using `RegisterDeviceNotification` and handling `WM_DEVICECHANGE`.
 
 ## Internals
 
