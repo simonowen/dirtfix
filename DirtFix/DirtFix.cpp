@@ -10,12 +10,15 @@ constexpr auto APP_VER{ "v1.3" };
 constexpr auto APP_URL{ "https://github.com/simonowen/dirtfix" };
 constexpr auto SETTINGS_KEY{ R"(Software\SimonOwen\DirtFix)" };
 constexpr auto STEAM_KEY{ R"(Software\Valve\Steam)" };
+constexpr auto OCULUS_KEY{ R"(Software\Oculus VR, LLC\Oculus\Libraries)" };
 
 const std::vector<std::string> game_dirs
 {
-	"Dirt Rally",
-	"Dirt Rally 2.0",
-	"DiRT 4",
+	"DiRT Rally",									// Steam
+	"DiRT Rally 2.0",								// Steam and Microsoft
+	"DiRT 4",										// Steam
+	"codemasters-dirt-rally/World/application",		// Oculus
+	"codemasters-dirt-rally-2-0",					// Oculus
 };
 
 struct FILE_CHANGES
@@ -274,6 +277,73 @@ auto LoadRegistrySettings()
 				settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
 			}
 		}
+	}
+
+	// Check for supported games in the Microsoft Store location.
+	char szPF[MAX_PATH]{};
+	if (ExpandEnvironmentStrings("%ProgramW6432%", szPF, _countof(szPF)) ||
+		ExpandEnvironmentStrings("%ProgramFiles%", szPF, _countof(szPF)))
+	{
+		DisableFsRedirection fs_disable;
+		auto msstore_path = fs::path(szPF) / "ModifiableWindowsApps";
+
+		if (fs::exists(msstore_path))
+		{
+			for (auto& subdir : game_dirs)
+			{
+				auto dir_path = fs::absolute(msstore_path / subdir);
+				if (IsDirtDirectory(dir_path, is_x64))
+				{
+					settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
+				}
+			}
+		}
+	}
+
+	// If the Oculus software is installed, check for supported games there.
+	DWORD dwOptions = KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS;
+	if (RegOpenKeyEx(HKEY_CURRENT_USER, OCULUS_KEY, 0, dwOptions, &hkey) == ERROR_SUCCESS)
+	{
+		DisableFsRedirection fs_disable;
+		DWORD dwIndex = 0;
+
+		for (;;)
+		{
+			char szSubKey[MAX_PATH]{};
+			DWORD cbSubKey = sizeof(szSubKey);
+
+			if (RegEnumKeyEx(hkey, dwIndex++, szSubKey, &cbSubKey, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+				break;
+
+			HKEY hkeyLib{};
+			if (RegOpenKeyEx(hkey, szSubKey, 0, KEY_QUERY_VALUE, &hkeyLib) == ERROR_SUCCESS)
+			{
+				char szPath[MAX_PATH]{};
+				DWORD cbPath = sizeof(szPath);
+
+				RegQueryValueEx(hkeyLib, "Path", NULL, NULL, reinterpret_cast<LPBYTE>(szPath), &cbPath);
+				RegCloseKey(hkeyLib);
+
+				DWORD cchRet{};
+				char szVolume[MAX_PATH]{};
+				auto vol_str = std::string(szPath, 49);
+				GetVolumePathNamesForVolumeName(vol_str.c_str(), szVolume, _countof(szVolume), &cchRet);
+
+				auto oculus_path = fs::path(std::string(szVolume)) / std::string(szPath + 49);
+				oculus_path /= "Software";
+
+				for (auto& subdir : game_dirs)
+				{
+					auto dir_path = fs::absolute(oculus_path / subdir);
+					if (IsDirtDirectory(dir_path, is_x64))
+					{
+						settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
+					}
+				}
+			}
+		}
+
+		RegCloseKey(hkey);
 	}
 
 	// Pull previously saved paths from the registry, which includes manual entries.
