@@ -3,7 +3,6 @@
 // Source code released under MIT License.
 
 #include "pch.h"
-#include <sstream>
 #include "resource.h"
 
 constexpr auto APP_NAME{ "DirtFix" };
@@ -19,15 +18,87 @@ const std::vector<std::string> game_dirs
 	"DiRT 4",
 };
 
+struct FILE_CHANGES
+{
+	std::vector<std::pair<std::string, std::string>> copies;
+	std::vector<std::string> deletes;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsDirtExe(fs::path path, bool &is_x64)
+// Helper class to disable WOW file redirection in the scope of the object,
+// allowing us to selectively access 64-bit only paths from our 32-bit process.
+class DisableFsRedirection
+{
+public:
+	DisableFsRedirection() { Wow64DisableWow64FsRedirection(&m_last_redir); }
+	~DisableFsRedirection() { Wow64RevertWow64FsRedirection(m_last_redir); }
+private:
+	PVOID m_last_redir{};
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool MatchingFiles(const fs::path& src_path, const fs::path& dst_path)
+{
+	try
+	{
+		if (fs::exists(src_path) && fs::exists(dst_path) &&
+			fs::file_size(src_path) == fs::file_size(dst_path))
+		{
+			std::ifstream src_file(src_path.string(), std::ifstream::in | std::ifstream::binary);
+			std::ifstream dst_file(dst_path.string(), std::ifstream::in | std::ifstream::binary);
+			if (src_file.is_open() && dst_file.is_open())
+			{
+				std::vector<char> sbuf(static_cast<size_t>(fs::file_size(src_path)));
+				std::vector<char> dbuf(static_cast<size_t>(fs::file_size(dst_path)));
+
+				src_file.read(sbuf.data(), sbuf.size());
+				dst_file.read(dbuf.data(), dbuf.size());
+
+				return sbuf == dbuf;
+			}
+		}
+	}
+	catch (...) {}
+
+	return false;
+}
+
+bool IsX64Binary(const fs::path &path)
+{
+	// GetBinaryType appears to fail when the path contains unreadable directories,
+	// even when a full path is given. Below does all we need directly.
+	try
+	{
+		std::ifstream f(path.string(), std::ifstream::in | std::ifstream::binary);
+
+		IMAGE_DOS_HEADER dos_header{};
+		f.read(reinterpret_cast<char*>(&dos_header), sizeof(dos_header));
+
+		if (dos_header.e_magic != IMAGE_DOS_SIGNATURE)
+			return false;
+
+		f.seekg(dos_header.e_lfanew);
+
+		IMAGE_NT_HEADERS nt_headers{};
+		f.read(reinterpret_cast<char*>(&nt_headers), sizeof(nt_headers));
+
+		return nt_headers.FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64;
+	}
+	catch (...) {}
+
+	return false;
+}
+
+bool IsDirtExe(const fs::path &path)
 {
 	DWORD dwHandle;
-	auto dwSize = GetFileVersionInfoSize(path.u8string().c_str(), &dwHandle);
+	auto path_str = path.string();
+	auto dwSize = GetFileVersionInfoSize(path_str.c_str(), &dwHandle);
 
 	std::vector<BYTE> data(dwSize);
-	if (!GetFileVersionInfo(path.u8string().c_str(), NULL, dwSize, data.data()))
+	if (!GetFileVersionInfo(path_str.c_str(), NULL, dwSize, data.data()))
 		return false;
 
     UINT ncbSz;
@@ -46,36 +117,37 @@ bool IsDirtExe(fs::path path, bool &is_x64)
 	if (!VerQueryValue(data.data(), ss.str().c_str(), (LPVOID *)&pszProductName, &cchProductName))
 		return false;
 
-	DWORD dwBinaryType{};
-	if (GetBinaryType(path.u8string().c_str(), &dwBinaryType))
-		is_x64 = (dwBinaryType == SCS_64BIT_BINARY);
-
 	auto strProduct = std::string(pszProductName, cchProductName);
 	return strProduct.find("DiRT") != std::string::npos;
 }
 
-bool IsDirtDirectory(fs::path dir, bool &is_x64)
+bool IsDirtDirectory(const fs::path &dir, bool &is_x64)
 {
 	if (!fs::is_directory(dir))
 		return false;
 
 	for (auto& p : fs::directory_iterator(dir))
 	{
-		if (p.path().extension() == ".exe" && IsDirtExe(p.path(), is_x64))
+		if (p.path().extension() == ".exe" && IsDirtExe(p.path()))
+		{
+			is_x64 = IsX64Binary(p.path());
 			return true;
+		}
 	}
 
 	return false;
 }
 
-bool IsShimInstalled(fs::path path)
+bool IsShimInstalled(const fs::path &path)
 {
 	auto dll_path = path / "dinput8.dll";
 	return fs::exists(dll_path) && fs::is_regular_file(dll_path);
 }
 
-bool UpdateShim(HWND hwndParent, fs::path path, bool install)
+bool GetShimFileChanges(fs::path path, bool install, FILE_CHANGES &file_changes)
 {
+	DisableFsRedirection fs_disable;
+
 	char szEXE[MAX_PATH]{};
 	GetModuleFileName(NULL, szEXE, _countof(szEXE));
 
@@ -90,25 +162,65 @@ bool UpdateShim(HWND hwndParent, fs::path path, bool install)
 		auto src_path = fs::path(szEXE).remove_filename();
 		src_path /= (is_x64 ? "dinput8_64.dll" : "dinput8_32.dll");
 
-		if (!CopyFileW(src_path.c_str(), dst_path.c_str(), FALSE))
+		if (!MatchingFiles(src_path, dst_path))
 		{
-			auto dwError = GetLastError();
-			std::stringstream ss;
-			ss << "Failed to install shim DLL (error " << dwError << ")\n\n" << dst_path.string();
-			MessageBox(hwndParent, ss.str().c_str(), APP_NAME, MB_ICONEXCLAMATION);
-			return false;
+			file_changes.copies.emplace_back(std::make_pair(src_path.string(), dst_path.string()));
 		}
 	}
-	else if (fs::exists(dst_path) && !DeleteFileW(dst_path.c_str()))
+	else if (fs::exists(dst_path))
 	{
-		auto dwError = GetLastError();
-		if (dwError != ERROR_FILE_NOT_FOUND)
+		file_changes.deletes.emplace_back(dst_path.string());
+	}
+
+	return true;
+}
+
+bool ApplyFileChanges(HWND hwndParent, const FILE_CHANGES &file_changes)
+{
+	auto& [file_copies, file_deletes] = file_changes;
+
+	if (!file_copies.empty())
+	{
+		std::string src_files;
+		std::string dst_files;
+
+		for (auto [src_path, dst_path] : file_copies)
 		{
-			std::stringstream ss;
-			ss << "Failed to remove shim DLL (error " << dwError << ")\n\n" << dst_path.string();
-			MessageBox(hwndParent, ss.str().c_str(), APP_NAME, MB_ICONEXCLAMATION);
-			return false;
+			src_files += src_path + '\0';
+			dst_files += dst_path + '\0';
 		}
+
+		src_files += '\0';
+		dst_files += '\0';
+
+		SHFILEOPSTRUCT fo{};
+		fo.hwnd = hwndParent;
+		fo.wFunc = FO_COPY;
+		fo.fFlags = FOF_MULTIDESTFILES | FOF_FILESONLY | FOF_NOCONFIRMATION;
+		fo.pFrom = src_files.c_str();
+		fo.pTo = dst_files.c_str();
+
+		if (SHFileOperation(&fo) || fo.fAnyOperationsAborted)
+			return false;
+	}
+
+	if (!file_deletes.empty())
+	{
+		std::string files;
+
+		for (auto& file : file_deletes)
+			files += file + '\0';
+
+		files += '\0';
+
+		SHFILEOPSTRUCT fo{};
+		fo.hwnd = hwndParent;
+		fo.wFunc = FO_DELETE;
+		fo.fFlags = FOF_FILESONLY | FOF_NOCONFIRMATION;
+		fo.pFrom = files.c_str();
+
+		if (SHFileOperation(&fo) || fo.fAnyOperationsAborted)
+			return false;
 	}
 
 	return true;
@@ -117,7 +229,7 @@ bool UpdateShim(HWND hwndParent, fs::path path, bool install)
 bool AddListEntry(HWND hDlg, fs::path path, bool enabled)
 {
 	HWND hListView = GetDlgItem(hDlg, IDL_DIRS);
-	auto strPath = fs::canonical(fs::path(path)).u8string();
+	auto strPath = fs::canonical(fs::path(path)).string();
 
 	LVFINDINFO lfi{};
 	lfi.flags = LVFI_STRING;
@@ -143,7 +255,7 @@ auto LoadRegistrySettings()
 	std::map<std::string, bool> settings;
 
 	// If Steam is installed, check if the supported games are installed.
-	if (RegCreateKey(HKEY_CURRENT_USER, STEAM_KEY, &hkey) == ERROR_SUCCESS)
+	if (RegOpenKeyEx(HKEY_CURRENT_USER, STEAM_KEY, 0, KEY_QUERY_VALUE, &hkey) == ERROR_SUCCESS)
 	{
 		char szPath[MAX_PATH]{};
 		DWORD cbPath = sizeof(szPath);
@@ -152,17 +264,14 @@ auto LoadRegistrySettings()
 		RegQueryValueEx(hkey, "SteamPath", NULL, &dwType, reinterpret_cast<LPBYTE>(szPath), &cbPath);
 		RegCloseKey(hkey);
 
-		if (szPath[0])
-		{
-			auto steam_path = fs::path(szPath) / "SteamApps/common";
+		auto steam_path = fs::path(szPath) / "SteamApps/common";
 
-			for (auto& subdir : game_dirs)
+		for (auto& subdir : game_dirs)
+		{
+			auto dir_path = fs::absolute(steam_path / subdir);
+			if (IsDirtDirectory(dir_path, is_x64))
 			{
-				auto dir_path = fs::absolute(steam_path / subdir);
-				if (IsDirtDirectory(dir_path, is_x64))
-				{
-					settings[fs::canonical(dir_path).u8string()] = IsShimInstalled(dir_path);
-				}
+				settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
 			}
 		}
 	}
@@ -187,7 +296,7 @@ auto LoadRegistrySettings()
 			auto dir_path = fs::path(szValue);
 			if (IsDirtDirectory(dir_path, is_x64))
 			{
-				settings[fs::canonical(dir_path).u8string()] = IsShimInstalled(dir_path);
+				settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
 			}
 			else
 			{
@@ -209,18 +318,20 @@ void SaveRegistrySettings(
 	HKEY hkey;
 	if (RegCreateKey(HKEY_CURRENT_USER, SETTINGS_KEY, &hkey) == ERROR_SUCCESS)
 	{
+		FILE_CHANGES file_changes;
+
 		for (auto &entry : settings)
 		{
 			auto [dir, enabled] = entry;
-			UpdateShim(hDlg, dir, enabled);
+			GetShimFileChanges(dir, enabled, file_changes);
 
 			DWORD dwData = enabled ? 1 : 0;	// not used
 			RegSetValueExA(hkey, dir.c_str(), 0, REG_DWORD, reinterpret_cast<LPBYTE>(&dwData), sizeof(dwData));
 		}
 
 		RegCloseKey(hkey);
+		ApplyFileChanges(hDlg, file_changes);
 	}
-
 }
 
 void AddSetting(HWND hDlg)
@@ -361,13 +472,16 @@ int CALLBACK WinMain(
 {
 	if (!lstrcmpi(lpCmdLine, "/uninstall"))
 	{
+		FILE_CHANGES file_changes;
+
 		auto settings = LoadRegistrySettings();
 		for (auto &entry : settings)
 		{
 			auto [dir, enabled] = entry;
-			UpdateShim(NULL, dir, false);
+			GetShimFileChanges(dir, false, file_changes);
 		}
 
+		ApplyFileChanges(NULL, file_changes);
 		return 0;
 	}
 

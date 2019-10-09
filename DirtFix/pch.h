@@ -14,6 +14,8 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <sstream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <map>
