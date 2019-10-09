@@ -30,6 +30,11 @@ HRESULT __stdcall Hooked_EnumDevices(
 		}
 	}
 
+#ifdef _DEBUG
+	// In debug, play the bell sound every time a call is passed through.
+	MessageBeep(static_cast<UINT>(-1));
+#endif
+
 	return g_pfnEnumDevices(pThis, dwDevType, lpCallback, pvRef, dwFlags);
 }
 
@@ -65,6 +70,13 @@ DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID* ppv
 
 	if (!g_pfnDirectInput8Create)
 	{
+#ifdef _DEBUG
+		// In debug, show the path of the module we've been loaded into.
+		char szEXE[MAX_PATH]{};
+		GetModuleFileName(NULL, szEXE, sizeof(szEXE));
+		MessageBox(NULL, szEXE, APP_NAME, MB_ICONINFORMATION);
+#endif
+
 		char szSystem[MAX_PATH]{};
 		GetSystemDirectory(szSystem, _countof(szSystem));	// System32 or SysWOW64
 
