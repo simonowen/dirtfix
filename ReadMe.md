@@ -1,4 +1,4 @@
-# DirtFix (DiRT Input Glitch Fixer) v1.3
+# DirtFix (DiRT Input Glitch Fixer) v1.4
 
 ## Introduction
 
@@ -85,6 +85,10 @@ Source code is available from the [DirtFix project page](https://github.com/simo
 Includes VS2019 solution, but requires detours.lib from vcpkg.
 
 ## Changelog
+
+### v1.4
+- auto-detect supported games bought from Oculus and Microsoft stores.
+- added support for games in protected locations that require elevation.
 
 ### v1.3
 - added support for hot-plugging controllers while the game is running.

@@ -6,7 +6,7 @@
 #include "resource.h"
 
 constexpr auto APP_NAME{ "DirtFix" };
-constexpr auto APP_VER{ "v1.3" };
+constexpr auto APP_VER{ "v1.4" };
 constexpr auto APP_URL{ "https://github.com/simonowen/dirtfix" };
 constexpr auto SETTINGS_KEY{ R"(Software\SimonOwen\DirtFix)" };
 constexpr auto STEAM_KEY{ R"(Software\Valve\Steam)" };
