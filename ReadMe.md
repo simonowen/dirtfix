@@ -1,4 +1,4 @@
-# DirtFix (DiRT Input Glitch Fixer) v1.4
+# DirtFix (DiRT Input Glitch Fixer) v1.5
 
 ## Introduction
 
@@ -86,6 +86,9 @@ Includes VS2019 solution, but requires detours.lib from vcpkg.
 
 ## Changelog
 
+### v1.5
+- auto-detect Microsoft Store games installed on drives other than C:
+
 ### v1.4
 - auto-detect supported games bought from Oculus and Microsoft stores.
 - added support for games in protected locations that require elevation.
@@ -99,7 +102,7 @@ Includes VS2019 solution, but requires detours.lib from vcpkg.
 
 ### v1.1
 - added support for DiRT Rally 2.0 and DiRT 4.
-- complete rewritten to avoid using thread injection.
+- completely rewritten to avoid using thread injection.
 
 ### v1.0
 - first public test release.
