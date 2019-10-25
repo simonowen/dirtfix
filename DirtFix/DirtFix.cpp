@@ -279,22 +279,34 @@ auto LoadRegistrySettings()
 		}
 	}
 
-	// Check for supported games in the Microsoft Store location.
+	// Check for supported games in Microsoft Store storage locations.
 	char szPF[MAX_PATH]{};
 	if (ExpandEnvironmentStrings("%ProgramW6432%", szPF, _countof(szPF)) ||
 		ExpandEnvironmentStrings("%ProgramFiles%", szPF, _countof(szPF)))
 	{
 		DisableFsRedirection fs_disable;
-		auto msstore_path = fs::path(szPF) / "ModifiableWindowsApps";
 
-		if (fs::exists(msstore_path))
+		// Until we know how to find the storage locations, scan all fixed drives.
+		std::vector<char> drives(GetLogicalDriveStrings(0, nullptr));
+		GetLogicalDriveStrings(static_cast<DWORD>(drives.size()), drives.data());
+
+		for (auto pszRoot = drives.data(); *pszRoot; pszRoot += strlen(pszRoot) + 1)
 		{
-			for (auto& subdir : game_dirs)
+			if (GetDriveType(pszRoot) != DRIVE_FIXED)
+				continue;
+
+			szPF[0] = pszRoot[0];
+			auto msstore_path = fs::path(szPF) / "ModifiableWindowsApps";
+
+			if (fs::exists(msstore_path))
 			{
-				auto dir_path = fs::absolute(msstore_path / subdir);
-				if (IsDirtDirectory(dir_path, is_x64))
+				for (auto& subdir : game_dirs)
 				{
-					settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
+					auto dir_path = fs::absolute(msstore_path / subdir);
+					if (IsDirtDirectory(dir_path, is_x64))
+					{
+						settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
+					}
 				}
 			}
 		}
