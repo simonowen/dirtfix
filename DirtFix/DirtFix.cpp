@@ -22,6 +22,18 @@ const std::vector<std::string> game_dirs
 	"GRID Autosport",								// Steam
 };
 
+const std::map<std::string, std::string> fixed_games
+{
+	{ "DiRT Rally 2.0", "1,10,129,1631" },			// Fixed in 1.10.1 patch
+};
+
+struct GameInfo
+{
+	bool is_enabled{ false };
+	bool is_x64{ false };
+	bool is_fixed{ false };
+};
+
 struct FILE_CHANGES
 {
 	std::vector<std::pair<std::string, std::string>> copies;
@@ -95,7 +107,16 @@ bool IsX64Binary(const fs::path &path)
 	return false;
 }
 
-bool IsGameExe(const fs::path &path)
+uint64_t VersionValue(const std::string strVersion)
+{
+	unsigned major = 0, minor = 0, revision = 0, build = 0;
+	if (sscanf_s(strVersion.c_str(), "%u,%u,%u,%u", &major, &minor, &revision, &build) < 1)
+		return 0;
+
+	return (static_cast<uint64_t>((major << 16) | minor) << 32) | (revision << 16) | build;
+}
+
+bool IsGameExe(const fs::path &path, GameInfo &info)
 {
 	DWORD dwHandle;
 	auto path_str = path.string();
@@ -111,33 +132,57 @@ bool IsGameExe(const fs::path &path)
 		return false;
 
 	std::stringstream ss;
-	ss << "\\StringFileInfo\\" << std::hex << std::setfill('0');
+	ss << std::hex << std::setfill('0');
 	ss << std::setw(4) << pLcp->wLanguage;
 	ss << std::setw(4) << pLcp->wCodePage;
-	ss << "\\ProductName";
+	ss << std::dec;
+	auto strCodepage = ss.str();
 
-	char *pszProductName{};
-	unsigned int cchProductName{};
-	if (!VerQueryValue(data.data(), ss.str().c_str(), (LPVOID *)&pszProductName, &cchProductName))
+	auto strProductNameKey = "\\StringFileInfo\\" + strCodepage + "\\ProductName";
+
+	char *pszValue{};
+	unsigned int cchValue{};
+	if (!VerQueryValue(data.data(), strProductNameKey.c_str(), (LPVOID *)&pszValue, &cchValue))
 		return false;
 
-	auto strProduct = std::string(pszProductName, cchProductName);
-	return strProduct.find("DiRT") != std::string::npos ||
-		   strProduct.find("GRID") != std::string::npos;
+	auto strProductName = std::string(pszValue);
+	auto is_supported =
+		strProductName.find("DiRT") != std::string::npos ||
+		strProductName.find("GRID") != std::string::npos;
+
+	auto itFixed = fixed_games.find(strProductName);
+	if (itFixed != fixed_games.end())
+	{
+		auto strProductVersionKey = "\\StringFileInfo\\" + strCodepage + "\\ProductVersion";
+		info.is_fixed = true;
+
+		if (VerQueryValue(data.data(), strProductVersionKey.c_str(), (LPVOID*)&pszValue, &cchValue))
+		{
+			auto strProductVersion = std::string(pszValue, cchValue);
+
+			if (VersionValue(strProductVersion) < VersionValue(itFixed->second))
+				info.is_fixed = false;
+		}
+	}
+	else
+	{
+		info.is_fixed = false;
+	}
+
+	info.is_x64 = IsX64Binary(path);
+
+	return is_supported;
 }
 
-bool IsGameDirectory(const fs::path &dir, bool &is_x64)
+bool IsGameDirectory(const fs::path &dir, GameInfo &info)
 {
 	if (!fs::is_directory(dir))
 		return false;
 
 	for (auto& p : fs::directory_iterator(dir))
 	{
-		if (p.path().extension() == ".exe" && IsGameExe(p.path()))
-		{
-			is_x64 = IsX64Binary(p.path());
+		if (p.path().extension() == ".exe" && IsGameExe(p.path(), info))
 			return true;
-		}
 	}
 
 	return false;
@@ -156,8 +201,8 @@ bool GetShimFileChanges(fs::path path, bool install, FILE_CHANGES &file_changes)
 	char szEXE[MAX_PATH]{};
 	GetModuleFileName(NULL, szEXE, _countof(szEXE));
 
-	bool is_x64{};
-	if (!IsGameDirectory(path, is_x64))
+	GameInfo info;
+	if (!IsGameDirectory(path, info))
 		return false;
 
 	auto dst_path = path / "dinput8.dll";
@@ -165,7 +210,7 @@ bool GetShimFileChanges(fs::path path, bool install, FILE_CHANGES &file_changes)
 	if (install)
 	{
 		auto src_path = fs::path(szEXE).remove_filename();
-		src_path /= (is_x64 ? "dinput8_64.dll" : "dinput8_32.dll");
+		src_path /= (info.is_x64 ? "dinput8_64.dll" : "dinput8_32.dll");
 
 		if (!MatchingFiles(src_path, dst_path))
 		{
@@ -253,11 +298,24 @@ bool AddListEntry(HWND hDlg, fs::path path, bool enabled)
 	return index >= 0;
 }
 
+bool AddValidGameSettings(
+	const fs::path& dir_path,
+	std::map<std::string, GameInfo>& settings)
+{
+	GameInfo info;
+	if (!IsGameDirectory(dir_path, info))
+		return false;
+
+	info.is_enabled = IsShimInstalled(dir_path);
+	settings[fs::canonical(dir_path).string()] = info;
+
+	return true;
+}
+
 auto LoadRegistrySettings()
 {
 	HKEY hkey;
-	bool is_x64{};
-	std::map<std::string, bool> settings;
+	std::map<std::string, GameInfo> settings;
 
 	// If Steam is installed, check if the supported games are installed.
 	if (RegOpenKeyEx(HKEY_CURRENT_USER, STEAM_KEY, 0, KEY_QUERY_VALUE, &hkey) == ERROR_SUCCESS)
@@ -274,10 +332,7 @@ auto LoadRegistrySettings()
 		for (auto& subdir : game_dirs)
 		{
 			auto dir_path = fs::absolute(steam_path / subdir);
-			if (IsGameDirectory(dir_path, is_x64))
-			{
-				settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
-			}
+			AddValidGameSettings(dir_path, settings);
 		}
 	}
 
@@ -305,10 +360,7 @@ auto LoadRegistrySettings()
 				for (auto& subdir : game_dirs)
 				{
 					auto dir_path = fs::absolute(msstore_path / subdir);
-					if (IsGameDirectory(dir_path, is_x64))
-					{
-						settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
-					}
+					AddValidGameSettings(dir_path, settings);
 				}
 			}
 		}
@@ -349,10 +401,7 @@ auto LoadRegistrySettings()
 				for (auto& subdir : game_dirs)
 				{
 					auto dir_path = fs::absolute(oculus_path / subdir);
-					if (IsGameDirectory(dir_path, is_x64))
-					{
-						settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
-					}
+					AddValidGameSettings(dir_path, settings);
 				}
 			}
 		}
@@ -378,11 +427,7 @@ auto LoadRegistrySettings()
 			}
 
 			auto dir_path = fs::path(szValue);
-			if (IsGameDirectory(dir_path, is_x64))
-			{
-				settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
-			}
-			else
+			if (!AddValidGameSettings(dir_path, settings))
 			{
 				RegDeleteValue(hkey, szValue);
 				idx--;
@@ -397,19 +442,18 @@ auto LoadRegistrySettings()
 
 void SaveRegistrySettings(
 	_In_ HWND hDlg,
-	_In_ const std::map<std::string, bool> &settings)
+	_In_ const std::map<std::string, GameInfo> &settings)
 {
 	HKEY hkey;
 	if (RegCreateKey(HKEY_CURRENT_USER, SETTINGS_KEY, &hkey) == ERROR_SUCCESS)
 	{
 		FILE_CHANGES file_changes;
 
-		for (auto &entry : settings)
+		for (auto &[dir, info] : settings)
 		{
-			auto [dir, enabled] = entry;
-			GetShimFileChanges(dir, enabled, file_changes);
+			GetShimFileChanges(dir, info.is_enabled, file_changes);
 
-			DWORD dwData = enabled ? 1 : 0;	// not used
+			DWORD dwData = info.is_enabled ? 1 : 0;	// not used
 			RegSetValueExA(hkey, dir.c_str(), 0, REG_DWORD, reinterpret_cast<LPBYTE>(&dwData), sizeof(dwData));
 		}
 
@@ -436,8 +480,8 @@ void AddSetting(HWND hDlg)
 	auto path = fs::path(szPath);
 	CoTaskMemFree(pidl);
 
-	bool is_x64{};
-	if (!IsGameDirectory(path, is_x64))
+	GameInfo info;
+	if (!IsGameDirectory(path, info))
 	{
 		MessageBox(hDlg, "Selected location does not contain a supported game.", APP_NAME, MB_ICONEXCLAMATION);
 		return;
@@ -463,6 +507,7 @@ INT_PTR CALLBACK DialogProc(
 	_In_ LPARAM /*lParam*/)
 {
 	constexpr auto IDM_ABOUT = 0x1234;
+	static std::map<std::string, GameInfo> settings;
 
 	switch (uMsg)
 	{
@@ -479,11 +524,14 @@ INT_PTR CALLBACK DialogProc(
 		lvc.mask = LVCF_WIDTH;
 		ListView_InsertColumn(hListView, 0, &lvc);
 
-		auto settings = LoadRegistrySettings();
-		for (auto &entry : settings)
+		settings = LoadRegistrySettings();
+		for (auto &[dir, info] : settings)
 		{
-			auto [dir, enabled] = entry;
-			AddListEntry(hDlg, dir, enabled);
+			// Hide and disable fixed games.
+			if (info.is_fixed)
+				info.is_enabled = false;
+			else
+				AddListEntry(hDlg, dir, info.is_enabled);
 		}
 
 		auto hmenu = GetSystemMenu(hDlg, FALSE);
@@ -504,7 +552,6 @@ INT_PTR CALLBACK DialogProc(
 		case IDOK:
 		{
 			auto hListView = GetDlgItem(hDlg, IDL_DIRS);
-			std::map<std::string, bool> dir_status;
 
 			auto num_items = ListView_GetItemCount(hListView);
 			for (int i = 0; i < num_items; ++i)
@@ -520,10 +567,10 @@ INT_PTR CALLBACK DialogProc(
 				if (!SendMessage(hListView, LVM_GETITEM, 0, reinterpret_cast<LPARAM>(&li)))
 					break;
 
-				dir_status[szItem] = ListView_GetCheckState(hListView, i);
+				settings[szItem].is_enabled = ListView_GetCheckState(hListView, i);
 			}
 
-			SaveRegistrySettings(hDlg, dir_status);
+			SaveRegistrySettings(hDlg, settings);
 			DestroyWindow(hDlg);
 			return TRUE;
 		}
