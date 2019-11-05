@@ -19,6 +19,7 @@ const std::vector<std::string> game_dirs
 	"DiRT 4",										// Steam
 	"codemasters-dirt-rally/World/application",		// Oculus
 	"codemasters-dirt-rally-2-0",					// Oculus
+	"GRID Autosport",								// Steam
 };
 
 struct FILE_CHANGES
@@ -94,7 +95,7 @@ bool IsX64Binary(const fs::path &path)
 	return false;
 }
 
-bool IsDirtExe(const fs::path &path)
+bool IsGameExe(const fs::path &path)
 {
 	DWORD dwHandle;
 	auto path_str = path.string();
@@ -121,17 +122,18 @@ bool IsDirtExe(const fs::path &path)
 		return false;
 
 	auto strProduct = std::string(pszProductName, cchProductName);
-	return strProduct.find("DiRT") != std::string::npos;
+	return strProduct.find("DiRT") != std::string::npos ||
+		   strProduct.find("GRID") != std::string::npos;
 }
 
-bool IsDirtDirectory(const fs::path &dir, bool &is_x64)
+bool IsGameDirectory(const fs::path &dir, bool &is_x64)
 {
 	if (!fs::is_directory(dir))
 		return false;
 
 	for (auto& p : fs::directory_iterator(dir))
 	{
-		if (p.path().extension() == ".exe" && IsDirtExe(p.path()))
+		if (p.path().extension() == ".exe" && IsGameExe(p.path()))
 		{
 			is_x64 = IsX64Binary(p.path());
 			return true;
@@ -155,7 +157,7 @@ bool GetShimFileChanges(fs::path path, bool install, FILE_CHANGES &file_changes)
 	GetModuleFileName(NULL, szEXE, _countof(szEXE));
 
 	bool is_x64{};
-	if (!IsDirtDirectory(path, is_x64))
+	if (!IsGameDirectory(path, is_x64))
 		return false;
 
 	auto dst_path = path / "dinput8.dll";
@@ -272,7 +274,7 @@ auto LoadRegistrySettings()
 		for (auto& subdir : game_dirs)
 		{
 			auto dir_path = fs::absolute(steam_path / subdir);
-			if (IsDirtDirectory(dir_path, is_x64))
+			if (IsGameDirectory(dir_path, is_x64))
 			{
 				settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
 			}
@@ -303,7 +305,7 @@ auto LoadRegistrySettings()
 				for (auto& subdir : game_dirs)
 				{
 					auto dir_path = fs::absolute(msstore_path / subdir);
-					if (IsDirtDirectory(dir_path, is_x64))
+					if (IsGameDirectory(dir_path, is_x64))
 					{
 						settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
 					}
@@ -347,7 +349,7 @@ auto LoadRegistrySettings()
 				for (auto& subdir : game_dirs)
 				{
 					auto dir_path = fs::absolute(oculus_path / subdir);
-					if (IsDirtDirectory(dir_path, is_x64))
+					if (IsGameDirectory(dir_path, is_x64))
 					{
 						settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
 					}
@@ -376,7 +378,7 @@ auto LoadRegistrySettings()
 			}
 
 			auto dir_path = fs::path(szValue);
-			if (IsDirtDirectory(dir_path, is_x64))
+			if (IsGameDirectory(dir_path, is_x64))
 			{
 				settings[fs::canonical(dir_path).string()] = IsShimInstalled(dir_path);
 			}
@@ -420,7 +422,7 @@ void AddSetting(HWND hDlg)
 {
 	BROWSEINFO bi{};
 	bi.hwndOwner = hDlg;
-	bi.lpszTitle = "Select DiRT Game Installation Directory:";
+	bi.lpszTitle = "Select Game Installation Directory:";
 	bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_USENEWUI | BIF_NONEWFOLDERBUTTON;
 
 	auto pidl = SHBrowseForFolder(&bi);
@@ -435,9 +437,9 @@ void AddSetting(HWND hDlg)
 	CoTaskMemFree(pidl);
 
 	bool is_x64{};
-	if (!IsDirtDirectory(path, is_x64))
+	if (!IsGameDirectory(path, is_x64))
 	{
-		MessageBox(hDlg, "Selected location does not contain a DiRT game.", APP_NAME, MB_ICONEXCLAMATION);
+		MessageBox(hDlg, "Selected location does not contain a supported game.", APP_NAME, MB_ICONEXCLAMATION);
 		return;
 	}
 
