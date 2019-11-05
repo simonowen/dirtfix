@@ -1,4 +1,4 @@
-# DirtFix (DiRT Input Glitch Fixer) v1.5
+# DirtFix (DiRT Input Glitch Fixer) v1.6
 
 ## Introduction
 
@@ -6,7 +6,20 @@ Recent Codemasters "DiRT" series games check for game controller changes every
 2 seconds, which can cause a spike in frame times, leading to gameplay glitches.
 DirtFix suspends this background polling to eliminate the glitches it causes.
 
-Tested with DiRT Rally, DiRT Rally 2.0, and DiRT 4.
+### Affected games
+- DiRT Rally
+- DiRT 4
+- GRID Autosport
+
+### Fixed games
+- DiRT Rally 2.0 (resolved in v1.10.1)
+
+So far Codemasters seem unwilling to apply the known fix to older titles. If
+you're unhappy with that, be sure to let them know your opinion:
+
+- Web: [Codemasters Community - General Discussion](https://forums.codemasters.com/forum/16-general-discussion/)
+- Twitter: [@dirtgame](https://twitter.com/dirtgame) or [@Codemasters](https://twitter.com/Codemasters)
+- Email: [custservice@codemasters.com](mailto:custservice@codemasters.com)
 
 ## Install
 
@@ -67,7 +80,7 @@ multiple dropped frames.
 
 While DirtFix suspending the input polling does avoid the problem, it would be
 better if polling only occurred when PnP notifications indicated a change. This
-can be done using `RegisterDeviceNotification` and handling `WM_DEVICECHANGE`.
+could be done using `RegisterDeviceNotification` and handling `WM_DEVICECHANGE`.
 
 ## Internals
 
@@ -81,10 +94,14 @@ post-processing of the results, so no further controller changes are seen. This
 both saves CPU time and avoids the main thead lock contention, to prevents the
 glitches.
 
-Source code is available from the [DirtFix project page](https://github.com/simonowen/dirtfix) on GitHub.
-Includes VS2019 solution, but requires detours.lib from vcpkg.
+Source code is available from the [DirtFix project page](https://github.com/simonowen/dirtfix)
+on GitHub. Includes VS2019 solution, but requires detours.lib from vcpkg.
 
 ## Changelog
+
+### v1.6
+- hide and deactivate fixed versions DiRT Rally 2.0.
+- added GRID Autosport to affected games list.
 
 ### v1.5
 - auto-detect Microsoft Store games installed on drives other than C:
